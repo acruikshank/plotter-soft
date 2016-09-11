@@ -1,0 +1,56 @@
+#!/usr/local/bin/node
+process.chdir(__dirname + '/public')
+
+var SerialPort = require("serialport");
+var Worker = require('tiny-worker')
+
+var commandIndex = 0;
+
+SerialPort.list(function(err, ports) {
+  if (err) return console.errro("ERROR", err);
+  var matchingPorts = ports.map(p => p.comName).filter(name => name.match(process.argv[3]));
+
+  if (! matchingPorts.length) {
+    console.error("No Matching port", process.argv[3])
+    console.log(ports.map(p => p.comName))
+    return
+  }
+
+  openPort(matchingPorts[0])
+})
+
+function openPort(portName) {
+  var port = new SerialPort(portName);
+  var plot = new Worker(process.argv[2]+'.js')
+
+  port.on('open', function() {
+    console.log("Port is open")
+  })
+
+  port.on('error', function(err) {
+    console.error("ERROR", err)
+  })
+
+  port.on('data', function(data) {
+    // console.log('sending',data[0],'commands')
+    plot.postMessage({count:data[0]})
+  });
+
+  plot.onmessage = function(e) {
+    var commands = e.data;
+    commands.forEach(c => console.log(c))
+    e.data.forEach(command => writeCommand(port, command.code, command.delay, command.x, command.y));
+    port.flush();
+  }
+}
+
+function writeCommand(port, code, delay, x, y) {
+  var arity = arguments.length
+  var buffer = new ArrayBuffer(3 + (x!=null?4:0) + (y!=null?4:0));
+  var view = new DataView(buffer)
+  view.setInt8(0, code, true);
+  view.setInt16(1, delay, true);
+  if (x != null) view.setFloat32(3, x, true);
+  if (y != null) view.setFloat32(7, y, true);
+  port.write(buffer);
+}

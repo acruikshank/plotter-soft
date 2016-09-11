@@ -1,0 +1,133 @@
+<html>
+<head>
+<style>
+html, body, canvas { width: 100%; height: 100%; margin: 0; }
+body { background: #000; }
+#buttons {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+}
+</style>
+<script src="perlin.js"></script>
+<script src="FileSaver.js"></script>
+</head>
+<body>
+<div id="buttons"></div>
+<canvas id="c"></canvas>
+<script>
+var canvas = document.getElementById('c')
+var cw = canvas.width = canvas.offsetWidth * 2;
+var ch = canvas.height = canvas.offsetHeight * 2;
+var ctx = canvas.getContext('2d')
+
+var points = [];
+var viewScale = 20;
+ctx.translate(cw/2, ch/2)
+ctx.scale(viewScale, viewScale)
+
+/*
+(2*1 - 1)^2 = 1  = 1 =
+(2*2 - 1)^2 = 9  = 2 =
+(2*3 - 1)^2 = 25 = 3
+(2*4 - 1)^2 = 49 = 4
+
+4*x^2 - 4*x + 1 - l
+4 + sqrt(16 + 16(l-1)) / 8 = .5 + .5*sqrt(l-1)
+ */
+
+var n = 200*200;
+var noiseScale = .002;
+var noiseAmplitude = 40;
+var scale = .05;
+var running = true;
+noise.seed(1);
+function noisify(c, x) {
+  var scale = Math.pow(noiseScale * Math.sqrt(c[0]*c[0] + c[1]*c[1]), 3)
+  return [
+      scale * c[0] + noiseAmplitude*noise.perlin3(scale*c[0], scale*c[1], 422 + x),
+      scale * c[1] + noiseAmplitude*noise.perlin3(scale*c[0], scale*c[1], 882 + x)
+    ]
+}
+
+function loopCoords(i) {
+  var l = Math.floor(.5*(1+Math.sqrt(i)))
+  var a = 2*l - 1
+  var offset = i - a*a
+  if (offset < 2*l) {
+    return [l, offset - l + 1]
+  } else if (offset < 4*l) {
+    return [3*l - offset - 1, l]
+  } else if (offset < 6*l) {
+    return [-l, 5*l - offset - 1]
+  }
+  return [-7*l + offset + 1, -l]
+}
+
+ctx.strokeStyle = '#fff';
+ctx.lineWidth = .4/viewScale;
+
+var theta = 0;
+function render() {
+  points = [];
+  ctx.clearRect(-cw/2,-ch/2, cw, ch)
+
+  ctx.beginPath();
+  ctx.moveTo(0,0);
+  for (var i=0; i<n; i++) {
+    var c = noisify(loopCoords(i), theta);
+    ctx.lineTo(c[0],c[1]);
+    points.push(c)
+  }
+
+  ctx.stroke();
+
+  theta += .005;
+  if (running)
+    requestAnimationFrame(render)
+}
+render();
+
+
+function saveSVG( points, name ){
+  var svgString = generateSVG( points );
+
+  var blob = new Blob([svgString], {type: 'text/plain'});
+
+  saveAs(blob, name+'.svg');
+}
+
+function generateSVG(points) {
+  var path = '';
+  path += 'M'+points[0][0].toFixed(2)+','+points[0][1].toFixed(2)
+       + points.slice(1).map(function(p) {return 'L'+p[0].toFixed(2)+','+p[1].toFixed(2)}).join('')
+  return '<?xml version="1.0" encoding="utf-8"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\
+    <svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"\
+	   viewBox="0 0 228.631 76.785" enable-background="new 0 0 228.631 76.785" xml:space="preserve">\
+	    <g>\
+		    <path stroke="#000000" stroke-width=".01" fill="none" d="' + path + '"/>\
+	    </g>\
+    </svg>';
+}
+
+
+var btn = document.createElement('button');
+btn.setAttribute('data-mesh', 'grid');
+btn.innerHTML = 'save grid';
+document.getElementById('buttons').appendChild(btn);
+btn.addEventListener('click', function() { saveSVG(points, 'grid'); });
+window.addEventListener('keyup', function(e) { if (e.code == 'Space' ) { running=!running; render(); } })
+
+
+// ctx.fillStyle = '#ff0';
+// for (var i=0; i<n; i++) {
+//   var c = loopCoords(i);
+//   ctx.beginPath()
+//   ctx.arc(c[0],c[1],.1,0,2*Math.PI);
+//   ctx.fill()
+// }
+
+</script>
+</body>
+</html>

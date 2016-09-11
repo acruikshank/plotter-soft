@@ -1,0 +1,91 @@
+<html>
+<head>
+<style>
+html, body, canvas { width: 100%; height: 100%; margin: 0; }
+body { background: #000; }
+#buttons { position: absolute; top: 0; left: 0; z-index: 1; }
+</style>
+<script src="perlin.js"></script>
+<script src="FileSaver.js"></script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="buttons"></div>
+<script>
+var points = [];
+
+var canvas = document.getElementById('c')
+var cw = canvas.width = canvas.offsetWidth * 2;
+var ch = canvas.height = canvas.offsetHeight * 2;
+var ctx = canvas.getContext('2d')
+var POINTS = 40000;
+var LOOPS = 100;
+var RADIUS = 40;
+var SCALE = 8;
+ctx.translate(cw/2, ch/2)
+ctx.scale(SCALE,-SCALE)
+
+var index = 0;
+var point = {x:0, y:0}
+
+ctx.strokeStyle = '#fff'
+ctx.lineWidth = 40/SCALE/LOOPS;
+function render() {
+  if (index >= 1.2*POINTS) return;
+
+  var inc = 1 / (POINTS-1)
+  var dTheta = LOOPS * frac;
+
+  ctx.beginPath()
+  ctx.moveTo(point.x,point.y)
+
+  for (var i=0; i<10000; i++) {
+    var noiseFreq = 3;
+    var frac = inc * index;
+    var theta = 2*Math.PI * LOOPS * frac;
+    var distort = Math.pow(frac,2) * noise.perlin3(noiseFreq*Math.cos(theta), noiseFreq*Math.sin(theta), 4*Math.pow(frac,2));
+    var r = RADIUS + 10*(index/POINTS) + 20 * distort;
+    point = {x: r*Math.cos(theta), y:r*Math.sin(theta) }
+
+    // points.push([point.x,point.y])
+    ctx.lineTo(point.x, point.y)
+    points.push([point.x, point.y])
+    index++;
+  }
+  ctx.stroke()
+
+  requestAnimationFrame(render)
+}
+render();
+
+function saveSVG( points, name ){
+  var svgString = generateSVG( points );
+
+  var blob = new Blob([svgString], {type: 'text/plain'});
+
+  saveAs(blob, name+'.svg');
+}
+
+function generateSVG(points) {
+  var path = '';
+  path += 'M'+points[0][0].toFixed(2)+','+points[0][1].toFixed(2)
+       + points.slice(1).map(function(p) {return 'L'+p[0].toFixed(2)+','+p[1].toFixed(2)}).join('')
+  return '<?xml version="1.0" encoding="utf-8"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\
+    <svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"\
+	   viewBox="0 0 228.631 76.785" enable-background="new 0 0 228.631 76.785" xml:space="preserve">\
+	    <g>\
+		    <path stroke="#000000" fill="none" stroke-width=".01" d="' + path + '"/>\
+	    </g>\
+    </svg>';
+}
+
+
+var btn = document.createElement('button');
+btn.setAttribute('data-mesh', 'grid');
+btn.innerHTML = 'save circle';
+document.getElementById('buttons').appendChild(btn);
+btn.addEventListener('click', function() { saveSVG(points, 'circle'); });
+
+</script>
+</body>
+</html>

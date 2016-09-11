@@ -1,0 +1,318 @@
+<html>
+<head>
+<style>
+html, body, canvas { width: 100%; height: 100%; margin: 0; }
+body { background: #000; }
+img { position: absolute; top: 0; right: 0; }
+</style>
+<script src="fonts.js"></script>
+<script type="text/javascript" src="jsgif/LZWEncoder.js"></script>
+<script type="text/javascript" src="jsgif/NeuQuant.js"></script>
+<script type="text/javascript" src="jsgif/GIFEncoder.js"></script>
+<script type="text/javascript" src="jsgif/Demos/b64.js"></script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<!-- <img id="i"></img> -->
+<script>
+var canvas = document.getElementById('c')
+var cw = canvas.width = canvas.offsetWidth * 2;
+var ch = canvas.height = canvas.offsetHeight * 2;
+var ctx = canvas.getContext('2d')
+var YINC = 1;
+var YMIN = -cw;
+var YMAX = ch;
+// var YMIN = 620;
+// var YMAX = 630;
+ctx.translate(cw/2,ch/2)
+
+function lerp(a,b,x) { return a + x*(b-a); }
+
+function cubicIntersection(cubic, line) {
+  var X=Array();
+
+  var A=line[1][1]-line[0][1];	    //A=y2-y1
+  var B=line[0][0]-line[1][0];	    //B=x1-x2
+  var C=line[0][0]*(line[0][1]-line[1][1]) +
+          line[0][1]*(line[1][0]-line[0][0]);	//C=x1*(y1-y2)+y1*(x2-x1)
+
+	var bx = bezierCoeffs(cubic[0][0],cubic[1][0],cubic[2][0],cubic[3][0]);
+	var by = bezierCoeffs(cubic[0][1],cubic[1][1],cubic[2][1],cubic[3][1]);
+
+  var roots = cubicRoots([
+	   A*bx[0]+B*by[0],
+     A*bx[1]+B*by[1],
+     A*bx[2]+B*by[2],
+     A*bx[3]+B*by[3] + C ])
+    .filter(function(x) { return x >= -0.00001 && x <=1.00001; });
+
+  return roots.map(function(t) {
+    return [
+      (((bx[0]*t) + bx[1])*t + bx[2])*t + bx[3],
+      (((by[0]*t) + by[1])*t + by[2])*t + by[3]
+    ]
+  })
+}
+
+/*based on http://mysite.verizon.net/res148h4j/javascript/script_exact_cubic.html#the%20source%20code*/
+function cubicRoots(P) {
+  if (Math.abs(P[0]) < .01) return quadraticRoots(P.slice(1))
+
+	var a=P[0], b=P[1], c=P[2], d=P[3];
+
+	var A = b/a;
+	var B = c/a;
+	var C = d/a;
+
+  var Q, R, D, S, T, Im;
+
+  var Q = (3*B - Math.pow(A, 2))/9;
+  var R = (9*A*B - 27*C - 2*Math.pow(A, 3))/54;
+  var D = Math.pow(Q, 3) + Math.pow(R, 2);    // polynomial discriminant
+
+  var t=[];
+
+  if (D >= 0) {                                 // complex or duplicate roots
+    var S = sgn(R + Math.sqrt(D))*Math.pow(Math.abs(R + Math.sqrt(D)),(1/3));
+    var T = sgn(R - Math.sqrt(D))*Math.pow(Math.abs(R - Math.sqrt(D)),(1/3));
+
+    t[0] = -A/3 + (S + T);                    // real root
+    t[1] = -A/3 - (S + T)/2;                  // real part of complex root
+    t[2] = -A/3 - (S + T)/2;                  // real part of complex root
+    Im = Math.abs(Math.sqrt(3)*(S - T)/2);    // complex part of root pair
+
+    /*discard complex roots*/
+    if (Im!=0) {
+      t[1]=-1;
+      t[2]=-1;
+    }
+  } else {                                        // distinct real roots
+    var th = Math.acos(R/Math.sqrt(-Math.pow(Q, 3)));
+
+    t[0] = 2*Math.sqrt(-Q)*Math.cos(th/3) - A/3;
+    t[1] = 2*Math.sqrt(-Q)*Math.cos((th + 2*Math.PI)/3) - A/3;
+    t[2] = 2*Math.sqrt(-Q)*Math.cos((th + 4*Math.PI)/3) - A/3;
+    Im = 0.0;
+  }
+
+  return t
+}
+
+function quadraticRoots(P) {
+  if (Math.abs(P[0]) < .0001) return linearRoots(P.slice(1))
+  var root = Math.sqrt(P[1]*P[1] - 4*P[0]*P[2])
+  if (isNaN(root)) return []
+  return [(-P[1]+root) / (2*P[0]), (-P[1]-root) / (2*P[0])]
+}
+
+function linearRoots(P) {
+  return [-P[1]/P[0]]
+}
+
+function sgn( x ) { return x < 0 ? -1 : 1 }
+
+function bezierCoeffs(P0, P1, P2, P3) {
+	return [ -P0 + 3*P1 + -3*P2 + P3, 3*P0 - 6*P1 + 3*P2, -3*P0 + 3*P1, P0 ]
+}
+
+fonts.loadFont('Helvetica.svg', withFont)
+
+function glyphToCurves(tx,ty,sx,sy) {
+  return function(glyph) {
+    return glyph.map(function(loop) {
+      for (var i=0,l=loop.curve.length,curves=[]; i<l; i+=2)
+        curves.push([loop.curve[i] * sx + tx, loop.curve[i+1] * sy + ty])
+      return curves;
+    })
+  }
+}
+
+var glyphs;
+var theta = .3;
+var dTheta = .005;
+var turning = true;
+function withFont(err, font) {
+  glyphs = fonts.glyphs(font, "Slicing").map(glyphToCurves(-.4*cw,1*ch/4,.4,-.4))
+ render();
+}
+
+function render() {
+  renderSlicing(theta)
+
+  theta += dTheta;
+  requestAnimationFrame(render)
+  // console.log(glyphs[0])
+}
+
+function renderSlicing(theta) {
+  ctx.clearRect(-cw,-ch,2*cw,2*ch)
+
+  ctx.fillStyle = '#fff'
+  ctx.lineWidth = 1;
+  ctx.lineJoin = 'round'
+  ctx.lineCap = 'round'
+  var strokeDir = vnorm([Math.cos(theta),Math.sin(theta)])
+  // glyphs = [fonts.parse('M227.019,33.978c1.291-0.93,1.943-2.917,1.445-4.428l-8.709-26.813C219.265,1.225,217.567,0,215.983,0h-28.209c-1.58,0-3.281,1.227-3.771,2.737l-8.709,26.816c-0.49,1.51,0.154,3.494,1.453,4.431l22.801,16.571c1.281,0.932,3.391,0.932,4.668,0L227.019,33.978zM220.071,25.015c0.352,1.086-0.289,1.965-1.422,1.965h-33.344c-1.129,0-1.773-0.879-1.42-1.965l5.346-16.428c0.34-1.081,1.564-1.96,2.691-1.96h20.117c1.129,0,2.346,0.879,2.691,1.956l0.906,2.803c0.357,1.068-0.285,1.95-1.414,1.95h-16.531c-1.137,0-2.332,0.888-2.67,1.966l-0.887,2.861c-0.334,1.078,0.316,1.964,1.441,1.964h20.852c1.127,0,2.338,0.88,2.695,1.948L220.071,25.015zM189.671,34.511c-0.922-0.662-0.744-1.2,0.391-1.2h23.84c1.131,0,1.307,0.538,0.393,1.2l-10.641,7.74c-0.926,0.664-2.422,0.664-3.34,0L189.671,34.511z')]
+  //   .map(glyphToCurves(-3.64*ch,-1.9*ch/4,.018*ch,.018*ch))
+
+  ctx.strokeStyle = '#fff';
+
+  glyphs.forEach(function(glyph) {
+    var fill = createFill(glyph, strokeDir, 6);
+    fill.forEach(function(line,i) {
+      ctx.strokeStyle = 'hsl('+parseInt(lerp(0,255,i/(fill.length-1)))+', 100%, 50%)';
+      ctx.beginPath();
+      line.forEach(function(p,j) {
+        ctx[j==0?'moveTo':'lineTo'](p[0],p[1])
+      })
+      ctx.stroke();
+    });
+  });
+}
+
+/* Given a list of active paths and a list of next points to add
+return active paths list to match the points to add and the completed paths.
+*/
+function mergeNew(oldList, newList, mergeable, merge) {
+  oldList = oldList.slice(0)
+  var merged = [];
+  var deletions = [];
+  for (var i=0; i<newList.length; i++) {
+    var newElement = newList[i]
+    for (var j=0, l=oldList.length; j<l; j++) {
+      var oldElement = oldList[j]
+      if (mergeable(oldElement, newElement)) {
+        merged.push(merge(oldList.splice(j,1)[0],newElement))
+        deletions = deletions.concat(oldList.splice(0,j))
+        break;
+      }
+    }
+    if (j >= l)
+      merged.push(newElement)
+  }
+  return [merged, deletions.concat(oldList)]
+}
+
+/* given a glyph, a direction and an increment, x,
+Create fill paths such that:
+* The distance between Every point in the glyph and some fill line is <= to x.
+* Every point in the fill lines is in in the glyph.
+* No point in the fill lines is outside the glyph.
+* The number of fill lines (jumps) is minimized.
+Returns and array of lines where each line is an array of points that can be drawn continuously.
+*/
+function createFill(glyph, strokeDir, xInc) {
+  var fillLines = []
+  var activeLines = []
+  var traverseDir = orthoCCW(strokeDir)
+  var bounds = projectionBounds(glyph, traverseDir)
+  var reverse = false;
+  for (var x=bounds[0]; x<bounds[1]; x+=xInc) {
+    var l0 = vscale(traverseDir, x)
+    var intersections = findIntersections(glyph, l0, strokeDir)
+    if (intersections.length % 2) continue; // skip if we have an odd number
+
+    var pairs = pairOff(intersections, reverse)
+    var merged = mergeNew(activeLines,pairs,mergeable,merge);
+    activeLines = merged[0]
+    fillLines = fillLines.concat(merged[1].map(lineToPoints))
+
+    reverse = !reverse;
+  }
+  fillLines = fillLines.concat(activeLines.map(lineToPoints))
+  return fillLines;
+
+  function mergeable(path1, path2) {
+    var lastPoint = path1[path1.length - 1]
+    var i1 = path2[0]
+    return lastPoint && i1.loop == lastPoint.loop && nearInLoop(glyph[i1.loop], i1.path, lastPoint.path)
+  }
+
+  function merge(path1, path2) {
+    return path1.concat(path2)
+  }
+}
+
+function circle(p) {
+  // console.log(p[0],p[1])
+  ctx.beginPath()
+  ctx.arc(p[0],p[1],5,0,2*Math.PI)
+  ctx.stroke();
+}
+function pairOff(list, reverse) {
+  for (var i=0, pairs=[]; i<list.length; i+=2) pairs.push([list[i+(reverse?1:0)], list[i+(reverse?0:1)]])
+  return pairs
+}
+function lineToPoints(l) { return l.map(intersectionToPoint) }
+function intersectionToPoint(i) { return i.p }
+function nearInLoop(loop, i1, i2) { return Math.abs(i1-i2) < 2 || Math.abs(i1-i2) > loop.length/4-2 }
+
+/* given a glyph, a point, p, and a direction normal, d,
+find all intersections with the glyph and the the line through p along d
+sorted s.t. each point is further than the last in the d direction.
+*/
+function findIntersections(glyph, p, d) {
+  var intersections = []
+  var line = [p,vadd(p,d)]
+  glyph.forEach(function(loop,l) {
+    for (var i=0; i<loop.length; i+=4) {
+      var curve = loop.slice(i,i+4);
+      cubicIntersection(curve, line).forEach(function(p) { intersections.push({p:p,loop:l,path:i/4}) })
+    }
+  })
+  return intersections.sort(function(a,b) {
+    return vdot(a.p,d) - vdot(b.p,d)
+  })
+}
+
+/* given a glyph and a normalized direction vector,
+find two distances, d0 and d1, on the line, l, through the origin and the dir vector
+such that the projection of all points in the glyph onto l lay on
+the side on the side of p in which the dir vector is pointing.
+*/
+function projectionBounds(glyph, dir) {
+  return glyph.reduce(function(points, loop) {
+    return loop.reduce(function(points, v) {
+      var proj = vdot(dir,v)
+      if (!points.length) return [proj,proj]
+      if (points[0] > proj) return [proj, points[1]]
+      if (points[1] < proj) return [points[0], proj]
+      return points;
+    }, points)
+  }, [])
+}
+
+// VECTOR MATH
+function vadd(a,v) { return [a[0]+v[0], a[1]+v[1]]; }
+function vsub(a,v) { return [a[0]-v[0], a[1]-v[1]]; }
+function vscale(a,c) { return [a[0]*c, a[1]*c]; }
+function vdot(a,v) { return a[0]*v[0] + a[1]*v[1]; }
+function vcross(a,v) { return [a[1]*v[2] - a[2]*v[1], a[2]*v[0] - a[0]*v[2]]; }
+function vlength(v) { return Math.sqrt(v[0]*v[0]+v[1]*v[1]); }
+function vdist(a, v) { return vlength(vsub(a,v)); }
+function vnorm(v) { var l=vlength(v); return l > 0 ? [v[0]/l, v[1]/l] : v; }
+function vinterp(a,b,c) { return vadd(a,vscale(vsub(b,a),c)); }
+function orthoCW(v) { return [v[1], -v[0]] }
+function orthoCCW(v) { return [-v[1], v[0]] }
+
+// var encoder = new GIFEncoder();
+// encoder.setRepeat(0);
+// encoder.setDelay(150);
+// encoder.start();
+//
+// for (var theta=0; theta<2*Math.PI; theta+= Math.PI/60) {
+//   render(theta);
+//   encoder.addFrame(ctx);
+// }
+//
+//
+// encoder.finish();
+// var binary_gif = encoder.stream().getData();
+// var data_url = 'data:image/gif;base64,'+encode64(binary_gif);
+//
+// document.getElementById('i').setAttribute('src', data_url);
+
+
+</script>
+</body>
+</html>

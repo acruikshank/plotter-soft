@@ -1,0 +1,125 @@
+<html>
+<head>
+<style>
+html, body, canvas { width: 100%; height: 100%; margin: 0; }
+body { background: #000; }
+img { position: absolute; top: 0; right: 0; }
+</style>
+<script src="fonts.js"></script>
+<script src="Helvetica.js"></script>
+<script src="splines.js"></script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+var canvas = document.getElementById('c')
+var cw = canvas.width = canvas.offsetWidth * 2;
+var ch = canvas.height = canvas.offsetHeight * 2;
+var ctx = canvas.getContext('2d')
+var YINC = 1;
+var YMIN = -cw;
+var YMAX = ch;
+var EDGE_FORCE = 10;
+var DAMPING = .995
+var TEXT = 'time'
+var SPACING = 35;
+var SCALE = .6
+// var YMIN = 620;
+// var YMAX = 630;
+ctx.translate(cw/2,ch/2)
+var shape = [1,2].map(() => [1,2,3,4].map((i) => [rrange(-cw/2,cw/2),rrange(-ch/2,ch/2)]))
+var p = [rrange(-cw/2,cw/2),rrange(-ch/2,ch/2)]
+
+var theta = -Math.PI/4;
+var dTheta = .0005;
+
+var strokeDir = [Math.cos(theta),Math.sin(theta)]
+
+function render() {
+  ctx.clearRect(-cw/2,-ch/2,cw,ch)
+
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2;
+
+  shape.forEach(function(spline) {
+    ctx.beginPath();
+    ctx.moveTo(spline[0][0],spline[0][1])
+    ctx.bezierCurveTo(spline[1][0],spline[1][1],spline[2][0],spline[2][1],spline[3][0],spline[3][1])
+    ctx.stroke();
+  })
+
+  ctx.strokeStyle = '#03f';
+  ctx.lineWidth = 1;
+  ctx.beginPath()
+  var endPoint = vsub(p,vscale(strokeDir,cw))
+  ctx.moveTo(endPoint[0],endPoint[1])
+  endPoint = vadd(p,vscale(strokeDir,cw))
+  ctx.lineTo(endPoint[0],endPoint[1])
+  ctx.stroke();
+
+  ctx.fillStyle = ctx.strokeStyle = '#fff'
+  ctx.beginPath();
+  ctx.arc(p[0],p[1],10,0,Math.PI*2,true)
+  ctx.stroke()
+
+  var intersections = splines.findIntersections(shape, p, strokeDir)
+  intersections.forEach(function(intersection) {
+    ctx.beginPath();
+    ctx.arc(intersection.p[0], intersection.p[1], 5, 0, 2*Math.PI,true)
+    ctx.fill();
+
+    var tangent = splines.cubicTangent(shape[intersection.loop],intersection.t)
+    var ntangent = vnorm(vsub(tangent[0],tangent[1]))
+
+    ctx.strokeStyle = '#fc2';
+    ctx.lineWidth = 1;
+    ctx.beginPath()
+    var endPoint = vsub(intersection.p,vscale(ntangent,100))
+    ctx.moveTo(endPoint[0],endPoint[1])
+    endPoint = vadd(intersection.p,vscale(ntangent,100))
+    ctx.lineTo(endPoint[0],endPoint[1])
+    ctx.stroke();
+
+    ctx.strokeStyle = '#2cf';
+    ctx.lineWidth = 2;
+    var intDir = vnorm(vsub(intersection.p,p))
+    var components = rebasis(intDir, ntangent)
+    var size = .001;
+    var intComponent = vadd(intersection.p,vscale(intDir,size*components[0]))
+    var sgn = components[1] > 0 ? -1 : 1
+    var tangComponent = vadd(intersection.p,vscale(orthoCCW(intDir),sgn*size*components[0]))
+    theta += Math.atan(sgn*size*components[0],vdist(intersection.p,p))
+    ctx.beginPath()
+    ctx.moveTo(intComponent[0],intComponent[1])
+    ctx.lineTo(intersection.p[0],intersection.p[1])
+    ctx.lineTo(tangComponent[0],tangComponent[1])
+    ctx.stroke();
+  })
+
+  // theta += dTheta
+  strokeDir = [Math.cos(theta),Math.sin(theta)]
+  requestAnimationFrame(render)
+}
+render()
+
+function rrange(min,max) { return lerp(min,max,Math.random()) }
+function lerp(a,b,x) { return a + x*(b-a) }
+
+// VECTOR MATH
+function vadd(a,v) { return [a[0]+v[0], a[1]+v[1]]; }
+function vsub(a,v) { return [a[0]-v[0], a[1]-v[1]]; }
+function vscale(a,c) { return [a[0]*c, a[1]*c]; }
+function vdot(a,v) { return a[0]*v[0] + a[1]*v[1]; }
+function vcross(a,v) { return [a[1]*v[2] - a[2]*v[1], a[2]*v[0] - a[0]*v[2]]; }
+function vlength(v) { return Math.sqrt(v[0]*v[0]+v[1]*v[1]); }
+function vdist(a, v) { return vlength(vsub(a,v)); }
+function vnorm(v) { var l=vlength(v); return l > 0 ? [v[0]/l, v[1]/l] : v; }
+function vinterp(a,b,c) { return vadd(a,vscale(vsub(b,a),c)); }
+function orthoCW(v) { return [v[1], -v[0]] }
+function orthoCCW(v) { return [-v[1], v[0]] }
+function rebasis(x,v) { return [vdot(x,v),vdot(orthoCCW(x),v)]}
+
+
+</script>
+</body>
+</html>
